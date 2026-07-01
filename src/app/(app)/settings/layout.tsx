@@ -3,6 +3,7 @@ import Link from "next/link";
 const tabs = [
   { href: "/settings/profile", label: "Profile" },
   { href: "/settings/teams", label: "Teams" },
+  { href: "/settings/import-export", label: "Import / export" },
   { href: "/settings/audit", label: "Audit log" },
 ];
 

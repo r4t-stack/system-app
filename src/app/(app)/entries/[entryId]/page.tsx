@@ -11,6 +11,7 @@ import { recordView } from "@/lib/actions/recents";
 import { EntryActions } from "@/components/entry-actions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { CopyButton } from "@/components/copy-button";
+import { HealthCheckButton } from "@/components/health-check-button";
 import {
   buildDbCommands,
   buildSshCommand,
@@ -125,6 +126,14 @@ export default async function EntryPage({
           )}
         </div>
       </div>
+
+      {entry.type === "SERVICE" && (entry.healthCheckUrl || entry.serviceUrl) && (
+        <HealthCheckButton
+          entryId={entry.id}
+          initialStatus={entry.lastHealthStatus}
+          initialLatency={entry.lastHealthLatencyMs}
+        />
+      )}
 
       {commands.length > 0 && (
         <div className="space-y-2 rounded-md border border-border p-4">
