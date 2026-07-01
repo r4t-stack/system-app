@@ -1,0 +1,281 @@
+// DevOps Hub — data model.
+//
+// NOTE ON ENUMS: SQLite (our dev default) does not support native Prisma enums,
+// so all "enum" concepts are stored as String and validated in the app layer via
+// Zod (see src/lib/validation). This keeps the schema portable to Postgres.
+//
+// Allowed values (validated in src/lib/validation):
+//   GlobalRole:      ADMIN | MEMBER
+//   TeamRole:        OWNER | ADMIN | MEMBER
+//   EntryType:       LINK | DB_CONNECTION | HOST | SERVICE | NOTE
+//   Environment:     DEV | STAGING | PROD | NONE
+//   SecretProvider:  VAULT | ENV | AWS_SM | NONE
+//   Permission:      READ | WRITE | ADMIN
+//   HealthStatus:    UP | DOWN | UNKNOWN
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Dev: sqlite. For Postgres, change to "postgresql" and set DATABASE_URL.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users, teams, auth (Auth.js adapter models included)
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  image        String?
+  role         String   @default("MEMBER") // GlobalRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    TeamMembership[]
+  ownedGroups    Group[]          @relation("GroupOwner")
+  createdEntries Entry[]          @relation("EntryCreatedBy")
+  favorites      Favorite[]
+  recents        RecentView[]
+  sharesReceived Share[]          @relation("ShareToUser")
+  sharesCreated  Share[]          @relation("ShareCreatedBy")
+  auditLogs      AuditLog[]
+  accounts       Account[]
+  sessions       Session[]
+}
+
+model Team {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  createdAt   DateTime         @default(now())
+  memberships TeamMembership[]
+  sharesReceived Share[]       @relation("ShareToTeam")
+  groups      Group[]          @relation("GroupTeam")
+}
+
+model TeamMembership {
+  id     String @id @default(cuid())
+  userId String
+  teamId String
+  role   String @default("MEMBER") // TeamRole
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([teamId])
+}
+
+// Auth.js Prisma adapter models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Groups — self-referencing tree with a materialized path for O(1) subtree queries.
+// ---------------------------------------------------------------------------
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String?
+  parentId    String?
+  ownerId     String
+  teamId      String?
+  // Materialized path of ancestor ids incl. self, e.g. "/rootId/childId/thisId/".
+  path        String   @default("/")
+  depth       Int      @default(0)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   Group?  @relation("GroupTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Group[] @relation("GroupTree")
+  owner    User    @relation("GroupOwner", fields: [ownerId], references: [id])
+  team     Team?   @relation("GroupTeam", fields: [teamId], references: [id])
+  entries  Entry[]
+  shares   Share[]
+
+  @@index([parentId])
+  @@index([path])
+  @@index([teamId])
+  @@index([ownerId])
+}
+
+// ---------------------------------------------------------------------------
+// Entries — Single-Table Inheritance. `type` discriminates; per-type fields nullable.
+// ---------------------------------------------------------------------------
+
+model Entry {
+  id          String  @id @default(cuid())
+  type        String // EntryType
+  name        String
+  description String?
+  groupId     String
+  createdById String
+  environment String  @default("NONE") // Environment
+  sortOrder   Int     @default(0)
+
+  // LINK
+  url String?
+
+  // DB_CONNECTION
+  dbEngine       String?
+  dbHost         String?
+  dbPort         Int?
+  dbName         String?
+  dbUser         String?
+  secretProvider String? // SecretProvider
+  secretRef      String? // opaque pointer to a secret in Vault/ENV — never a raw value
+
+  // HOST / SERVER
+  hostname  String?
+  ipAddress String?
+  sshPort   Int?
+  sshUser   String?
+
+  // SERVICE / ENDPOINT
+  serviceUrl          String?
+  healthCheckUrl      String?
+  lastHealthStatus    String? // HealthStatus
+  lastHealthLatencyMs Int?
+  lastCheckedAt       DateTime?
+
+  // NOTE
+  contentMd String?
+
+  // Denormalized text for search (name + description + host/url + tag names).
+  searchText String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group     Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("EntryCreatedBy", fields: [createdById], references: [id])
+  tags      EntryTag[]
+  favorites Favorite[]
+  recents   RecentView[]
+
+  @@index([groupId])
+  @@index([type])
+  @@index([environment])
+}
+
+model Tag {
+  id      String     @id @default(cuid())
+  name    String     @unique
+  color   String?
+  entries EntryTag[]
+}
+
+model EntryTag {
+  entryId String
+  tagId   String
+  entry   Entry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([entryId, tagId])
+  @@index([tagId])
+}
+
+// ---------------------------------------------------------------------------
+// Sharing — a Share grants a permission on a Group AND its whole subtree (via path).
+// Exactly one of toUserId / toTeamId is set (enforced in app layer).
+// ---------------------------------------------------------------------------
+
+model Share {
+  id          String   @id @default(cuid())
+  groupId     String
+  toUserId    String?
+  toTeamId    String?
+  permission  String   @default("READ") // Permission
+  createdById String
+  createdAt   DateTime @default(now())
+
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  toUser    User? @relation("ShareToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+  toTeam    Team? @relation("ShareToTeam", fields: [toTeamId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("ShareCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([groupId, toUserId])
+  @@unique([groupId, toTeamId])
+  @@index([groupId])
+  @@index([toUserId])
+  @@index([toTeamId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  entryId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entryId])
+  @@index([entryId])
+}
+
+model RecentView {
+  id       String   @id @default(cuid())
+  userId   String
+  entryId  String
+  viewedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry    Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entryId])
+  @@index([userId, viewedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String // create | update | delete | share | unshare | move | ...
+  entityType String
+  entityId   String
+  groupId    String?
+  diff       String? // JSON string (SQLite has no native JSON)
+  createdAt  DateTime @default(now())
+  actor      User     @relation(fields: [actorId], references: [id])
+
+  @@index([entityId])
+  @@index([groupId])
+  @@index([createdAt])
+}
