@@ -8,6 +8,7 @@ import {
 } from "@/lib/data/groups";
 import { permissionMeets } from "@/lib/authz";
 import { GroupActions } from "@/components/group-actions";
+import { NewEntryButton } from "@/components/new-entry-button";
 import { ENTRY_TYPE_LABELS, type EntryType } from "@/lib/constants";
 
 export default async function GroupPage({
@@ -70,9 +71,12 @@ export default async function GroupPage({
       </div>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Entries ({group.entries.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Entries ({group.entries.length})
+          </h2>
+          {canWrite && <NewEntryButton groupId={group.id} />}
+        </div>
         {group.entries.length === 0 ? (
           <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             No entries in this group yet.
