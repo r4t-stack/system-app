@@ -5,8 +5,17 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { requireUser } from "@/lib/session";
 import { getEntry } from "@/lib/data/entries";
+import { getFavoriteIds } from "@/lib/data/dashboard";
 import { permissionMeets } from "@/lib/authz";
+import { recordView } from "@/lib/actions/recents";
 import { EntryActions } from "@/components/entry-actions";
+import { FavoriteButton } from "@/components/favorite-button";
+import { CopyButton } from "@/components/copy-button";
+import {
+  buildDbCommands,
+  buildSshCommand,
+  type CopyCommand,
+} from "@/lib/connection-string";
 import type { EditableEntry } from "@/components/entry-form-dialog";
 import {
   ENTRY_TYPE_LABELS,
@@ -38,8 +47,21 @@ export default async function EntryPage({
   if (!result) notFound();
 
   const { entry, permission, tagNames } = result;
+  await recordView(entry.id);
+  const favoriteIds = await getFavoriteIds(user);
   const canWrite = permissionMeets(permission, "WRITE");
   const env = entry.environment as Environment;
+
+  const commands: CopyCommand[] =
+    entry.type === "DB_CONNECTION"
+      ? buildDbCommands(entry)
+      : entry.type === "HOST"
+        ? buildSshCommand(entry)
+        : entry.type === "LINK" && entry.url
+          ? [{ label: "URL", value: entry.url }]
+          : entry.type === "SERVICE" && entry.serviceUrl
+            ? [{ label: "URL", value: entry.serviceUrl }]
+            : [];
 
   const editable: EditableEntry = {
     id: entry.id,
@@ -92,14 +114,33 @@ export default async function EntryPage({
             <p className="text-muted-foreground">{entry.description}</p>
           )}
         </div>
-        {canWrite && (
-          <EntryActions
-            entry={editable}
-            groupId={entry.group.id}
-            redirectTo={`/groups/${entry.group.id}`}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          <FavoriteButton entryId={entry.id} initial={favoriteIds.has(entry.id)} />
+          {canWrite && (
+            <EntryActions
+              entry={editable}
+              groupId={entry.group.id}
+              redirectTo={`/groups/${entry.group.id}`}
+            />
+          )}
+        </div>
       </div>
+
+      {commands.length > 0 && (
+        <div className="space-y-2 rounded-md border border-border p-4">
+          {commands.map((c) => (
+            <div key={c.label} className="flex items-center gap-2">
+              <span className="w-32 shrink-0 text-sm text-muted-foreground">
+                {c.label}
+              </span>
+              <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">
+                {c.value}
+              </code>
+              <CopyButton value={c.value} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <dl className="divide-y divide-border rounded-md border border-border px-4 py-2">
         <Row label="URL" value={entry.url} />

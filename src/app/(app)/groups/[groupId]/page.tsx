@@ -9,7 +9,8 @@ import {
 import { permissionMeets } from "@/lib/authz";
 import { GroupActions } from "@/components/group-actions";
 import { NewEntryButton } from "@/components/new-entry-button";
-import { ENTRY_TYPE_LABELS, type EntryType } from "@/lib/constants";
+import { EntryListItem } from "@/components/entry-list-item";
+import { getFavoriteIds } from "@/lib/data/dashboard";
 
 export default async function GroupPage({
   params,
@@ -22,7 +23,10 @@ export default async function GroupPage({
   if (!result) notFound();
 
   const { group, permission } = result;
-  const breadcrumbs = await getGroupBreadcrumbs(groupId);
+  const [breadcrumbs, favoriteIds] = await Promise.all([
+    getGroupBreadcrumbs(groupId),
+    getFavoriteIds(user),
+  ]);
   const canWrite = permissionMeets(permission, "WRITE");
   const canAdmin = permissionMeets(permission, "ADMIN");
 
@@ -84,24 +88,11 @@ export default async function GroupPage({
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">
             {group.entries.map((entry) => (
-              <li key={entry.id} className="flex items-center gap-3 p-3">
-                <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {ENTRY_TYPE_LABELS[entry.type as EntryType] ?? entry.type}
-                </span>
-                <Link
-                  href={`/entries/${entry.id}`}
-                  className="font-medium hover:underline"
-                >
-                  {entry.name}
-                </Link>
-                <span className="truncate text-sm text-muted-foreground">
-                  {entry.url ??
-                    entry.dbHost ??
-                    entry.hostname ??
-                    entry.serviceUrl ??
-                    ""}
-                </span>
-              </li>
+              <EntryListItem
+                key={entry.id}
+                entry={entry}
+                favorited={favoriteIds.has(entry.id)}
+              />
             ))}
           </ul>
         )}
