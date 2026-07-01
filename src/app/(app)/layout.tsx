@@ -4,6 +4,8 @@ import { getGroupTree } from "@/lib/data/groups";
 import { GroupTree } from "@/components/group-tree";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/sign-out-button";
+import { CommandPalette } from "@/components/command-palette";
+import { SearchTrigger } from "@/components/search-trigger";
 
 export default async function AppLayout({
   children,
@@ -34,17 +36,12 @@ export default async function AppLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border px-6">
-          <div className="text-sm text-muted-foreground">
-            Press{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs">
-              ⌘K
-            </kbd>{" "}
-            to search
-          </div>
+          <SearchTrigger />
           <ThemeToggle />
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }
