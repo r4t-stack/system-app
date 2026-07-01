@@ -10,7 +10,9 @@ import { permissionMeets } from "@/lib/authz";
 import { GroupActions } from "@/components/group-actions";
 import { NewEntryButton } from "@/components/new-entry-button";
 import { EntryListItem } from "@/components/entry-list-item";
+import { ShareDialog } from "@/components/share-dialog";
 import { getFavoriteIds } from "@/lib/data/dashboard";
+import { getGroupShares } from "@/lib/data/shares";
 
 export default async function GroupPage({
   params,
@@ -23,12 +25,13 @@ export default async function GroupPage({
   if (!result) notFound();
 
   const { group, permission } = result;
-  const [breadcrumbs, favoriteIds] = await Promise.all([
-    getGroupBreadcrumbs(groupId),
-    getFavoriteIds(user),
-  ]);
   const canWrite = permissionMeets(permission, "WRITE");
   const canAdmin = permissionMeets(permission, "ADMIN");
+  const [breadcrumbs, favoriteIds, shares] = await Promise.all([
+    getGroupBreadcrumbs(groupId),
+    getFavoriteIds(user),
+    canAdmin ? getGroupShares(groupId) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -62,16 +65,19 @@ export default async function GroupPage({
             )}
           </div>
         </div>
-        <GroupActions
-          group={{
-            id: group.id,
-            name: group.name,
-            description: group.description,
-            color: group.color,
-          }}
-          canWrite={canWrite}
-          canAdmin={canAdmin}
-        />
+        <div className="flex items-center gap-2">
+          {canAdmin && <ShareDialog groupId={group.id} shares={shares} />}
+          <GroupActions
+            group={{
+              id: group.id,
+              name: group.name,
+              description: group.description,
+              color: group.color,
+            }}
+            canWrite={canWrite}
+            canAdmin={canAdmin}
+          />
+        </div>
       </div>
 
       <section className="space-y-2">

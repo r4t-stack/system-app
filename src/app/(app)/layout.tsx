@@ -27,9 +27,13 @@ export default async function AppLayout({
           <GroupTree tree={tree} />
         </div>
         <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm">
-          <span className="truncate text-muted-foreground" title={user.email}>
+          <Link
+            href="/settings/profile"
+            className="truncate text-muted-foreground hover:text-foreground"
+            title={user.email}
+          >
             {user.email}
-          </span>
+          </Link>
           <SignOutButton />
         </div>
       </aside>
